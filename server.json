@@ -1,0 +1,54 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.dockndevai/mcp-azure",
+  "description": "Model Context Protocol server for Azure (Resource Manager) — inventory, tags, VM power, and lifecycle with governance controls (access modes, subscription/resource-group scoping, protected groups, location allowlist, delete gating, confirmation, dry-run, audit).",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/dockndevai/mcp-azure",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registry_type": "npm",
+      "registry_base_url": "https://registry.npmjs.org",
+      "identifier": "@dockndevai/mcp-azure",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environment_variables": [
+        {
+          "name": "AZURE_TENANT_ID",
+          "description": "Entra ID tenant id.",
+          "is_required": true,
+          "is_secret": false
+        },
+        {
+          "name": "AZURE_CLIENT_ID",
+          "description": "App registration (service principal) client id.",
+          "is_required": true,
+          "is_secret": false
+        },
+        {
+          "name": "AZURE_CLIENT_SECRET",
+          "description": "Service principal client secret.",
+          "is_required": true,
+          "is_secret": true
+        },
+        {
+          "name": "AZURE_SUBSCRIPTION_ID",
+          "description": "Default subscription id.",
+          "is_required": false,
+          "is_secret": false
+        },
+        {
+          "name": "AZURE_MODE",
+          "description": "Access mode: read-only | read-write | admin.",
+          "is_required": false,
+          "is_secret": false
+        }
+      ]
+    }
+  ]
+}
