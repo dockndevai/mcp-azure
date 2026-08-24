@@ -39,11 +39,18 @@ function required(name: string): string {
 }
 
 export function loadConfig(): AppConfig {
+  // Fall back to empty credentials so the server can start and advertise its
+  // tools (introspection); token acquisition fails only when a tool is called.
+  if (!process.env.AZURE_TENANT_ID || !process.env.AZURE_CLIENT_ID || !process.env.AZURE_CLIENT_SECRET) {
+    process.stderr.write(
+      "[azure-mcp] WARNING: AZURE_TENANT_ID/CLIENT_ID/CLIENT_SECRET not fully set; tool calls will fail until provided.\n",
+    );
+  }
   return {
     connection: {
-      tenantId: required("AZURE_TENANT_ID"),
-      clientId: required("AZURE_CLIENT_ID"),
-      clientSecret: required("AZURE_CLIENT_SECRET"),
+      tenantId: process.env.AZURE_TENANT_ID ?? "",
+      clientId: process.env.AZURE_CLIENT_ID ?? "",
+      clientSecret: process.env.AZURE_CLIENT_SECRET ?? "",
       defaultSubscription: process.env.AZURE_SUBSCRIPTION_ID || undefined,
       requestTimeout: Number(process.env.AZURE_TIMEOUT_MS ?? 30000),
     },
