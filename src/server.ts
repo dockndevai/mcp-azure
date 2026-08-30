@@ -14,7 +14,7 @@ export function buildServer(config: AppConfig): { server: McpServer; enabled: st
   const policy = new SecurityPolicy(config.security);
   const client = new AzureClient(config.connection);
   const ctx: ToolContext = { client, policy, defaultSubscription: config.connection.defaultSubscription };
-  const server = new McpServer({ name: "mcp-azure", version: "0.1.1" });
+  const server = new McpServer({ name: "mcp-azure", version: "0.1.2" });
 
   const enabled: string[] = [];
   for (const tool of ALL_TOOLS) {
