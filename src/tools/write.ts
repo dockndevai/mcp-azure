@@ -76,6 +76,11 @@ export const writeTools: ToolDef[] = [
       const rg = a.resourceGroup as string;
       const { dryRun } = ctx.policy.guard({ tool: "control_vm", capability: "write", subscription: sub, resourceGroup: rg });
       if (dryRun) return textResult(`[dry-run] Would ${a.action} VM ${a.vmName} in ${rg}.`);
+      // Powering off / deallocating / restarting interrupts the VM — confirm those; a plain start doesn't.
+      if (a.action !== "start") {
+        const ok = await ctx.confirm.confirm({ action: `${a.action} VM`, target: a.vmName as string, details: { resourceGroup: rg } });
+        if (!ok.approved) return textResult(`Action cancelled — ${ok.reason}.`);
+      }
       await ctx.client.controlVm(sub, rg, a.vmName as string, a.action as string);
       return jsonResult({ ok: true, vm: a.vmName, action: a.action, resourceGroup: rg });
     },
