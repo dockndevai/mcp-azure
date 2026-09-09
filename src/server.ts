@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { AzureClient, AzureError } from "./azure/client.js";
 import type { AppConfig } from "./config.js";
+import { makeConfirmer } from "./elicit.js";
 import { PolicyError, SecurityPolicy } from "./security.js";
 import { adminTools } from "./tools/admin.js";
 import { readTools } from "./tools/read.js";
@@ -13,8 +14,8 @@ export const ALL_TOOLS: ToolDef[] = [...readTools, ...writeTools, ...adminTools]
 export function buildServer(config: AppConfig): { server: McpServer; enabled: string[] } {
   const policy = new SecurityPolicy(config.security);
   const client = new AzureClient(config.connection);
-  const ctx: ToolContext = { client, policy, defaultSubscription: config.connection.defaultSubscription };
-  const server = new McpServer({ name: "mcp-azure", version: "0.1.3" });
+  const server = new McpServer({ name: "mcp-azure", version: "0.2.0" });
+  const ctx: ToolContext = { client, policy, defaultSubscription: config.connection.defaultSubscription, confirm: makeConfirmer(server) };
 
   const enabled: string[] = [];
   for (const tool of ALL_TOOLS) {

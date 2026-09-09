@@ -36,6 +36,8 @@ export const adminTools: ToolDef[] = [
         confirmProvided: a.confirm as string | undefined,
       });
       if (dryRun) return textResult(`[dry-run] Would delete resource group '${name}' and all its resources.`);
+      const ok = await ctx.confirm.confirm({ action: "delete resource group (and everything in it)", target: name, details: { subscription: sub } });
+      if (!ok.approved) return textResult(`Deletion cancelled — ${ok.reason}.`);
       await ctx.client.deleteResourceGroup(sub, name);
       return jsonResult({ deleted: true, resourceGroup: name });
     },
@@ -67,6 +69,8 @@ export const adminTools: ToolDef[] = [
         confirmProvided: a.confirm as string | undefined,
       });
       if (dryRun) return textResult(`[dry-run] Would delete resource '${name}' (${a.resourceId}).`);
+      const ok = await ctx.confirm.confirm({ action: "delete resource", target: name, details: { id: a.resourceId as string } });
+      if (!ok.approved) return textResult(`Deletion cancelled — ${ok.reason}.`);
       await ctx.client.deleteResource(a.resourceId as string, a.apiVersion as string);
       return jsonResult({ deleted: true, resource: name });
     },

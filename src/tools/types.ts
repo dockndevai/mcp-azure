@@ -1,4 +1,5 @@
 import type { ZodRawShape } from "zod";
+import type { Confirmer } from "../elicit.js";
 import type { AzureClient } from "../azure/client.js";
 import type { Capability, SecurityPolicy } from "../security.js";
 
@@ -6,6 +7,8 @@ export interface ToolContext {
   client: AzureClient;
   policy: SecurityPolicy;
   defaultSubscription?: string;
+  /** Human-in-the-loop confirmation for destructive ops (no-op fallback when the client can't elicit). */
+  confirm: Confirmer;
 }
 
 export interface ToolResult {
