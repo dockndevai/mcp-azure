@@ -32,12 +32,6 @@ function parseMode(): AccessMode {
   throw new Error(`Invalid AZURE_MODE '${raw}'. Expected one of: read-only, read-write, admin.`);
 }
 
-function required(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing required environment variable: ${name}`);
-  return v;
-}
-
 export function loadConfig(): AppConfig {
   // Fall back to empty credentials so the server can start and advertise its
   // tools (introspection); token acquisition fails only when a tool is called.

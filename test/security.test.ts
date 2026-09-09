@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PolicyError, SecurityPolicy, type SecurityConfig } from "../src/security.js";
+import { SecurityPolicy, type SecurityConfig } from "../src/security.js";
 
 function makePolicy(overrides: Partial<SecurityConfig> = {}): SecurityPolicy {
   return new SecurityPolicy({
