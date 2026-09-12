@@ -15,7 +15,7 @@ export const writeTools: ToolDef[] = [
         ...subArg,
         name: z.string().describe("Resource group name"),
         location: z.string().describe("Azure region, e.g. eastus"),
-        tags: z.record(z.string()).optional().describe("Optional tags"),
+        tags: z.record(z.string(), z.string()).optional().describe("Optional tags"),
       },
     },
     handler: async (a, ctx) => {
@@ -43,7 +43,7 @@ export const writeTools: ToolDef[] = [
         ...subArg,
         resourceId: z.string().describe("Full ARM resource id"),
         resourceGroup: z.string().optional().describe("Resource group (for scoping/audit)"),
-        tags: z.record(z.string()).describe("Tags to merge, e.g. { \"env\": \"prod\", \"owner\": \"team-a\" }"),
+        tags: z.record(z.string(), z.string()).describe("Tags to merge, e.g. { \"env\": \"prod\", \"owner\": \"team-a\" }"),
       },
     },
     handler: async (a, ctx) => {

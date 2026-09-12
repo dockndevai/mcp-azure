@@ -1,7 +1,7 @@
 {
   "name": "@dockndevai/mcp-azure",
   "mcpName": "io.github.dockndevai/mcp-azure",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Model Context Protocol server for Azure (Resource Manager) — inventory, tags, VM power, and lifecycle with governance controls (access modes, subscription/resource-group scoping, protected groups, location allowlist, delete gating, confirmation, dry-run, audit).",
   "type": "module",
   "license": "MIT",
@@ -24,12 +24,12 @@
   "keywords": ["mcp", "model-context-protocol", "azure", "azure-resource-manager", "cloud", "devops", "governance", "llm", "ai"],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^3.23.8"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^22.9.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.6.3",
+    "@types/node": "^26.5.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
     "vitest": "^5.0.0"
   }
 }
