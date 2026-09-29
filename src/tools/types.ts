@@ -1,5 +1,6 @@
 import type { ZodRawShape } from "zod";
 import type { Confirmer } from "../elicit.js";
+import type { GuardClient } from "../guard.js";
 import type { AzureClient } from "../azure/client.js";
 import type { Capability, SecurityPolicy } from "../security.js";
 
@@ -9,6 +10,8 @@ export interface ToolContext {
   defaultSubscription?: string;
   /** Human-in-the-loop confirmation for destructive ops (no-op fallback when the client can't elicit). */
   confirm: Confirmer;
+  /** Optional AI risk gate (laya-guard). Off unless AZURE_GUARD_MODE is set. */
+  guard: GuardClient;
 }
 
 export interface ToolResult {
