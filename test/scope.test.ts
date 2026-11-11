@@ -10,10 +10,10 @@ import { buildServer } from "../src/server.js";
 
 /** Every outbound request, token endpoint included. A foreign host or a stray token request shows up here. */
 function stubFetch() {
-  const calls: Array<{ url: string; method: string; auth?: string }> = [];
+  const calls: Array<{ url: string; host: string; method: string; auth?: string }> = [];
   vi.stubGlobal("fetch", async (input: URL | string, init?: { method?: string; headers?: Record<string, string> }) => {
     const url = new URL(String(input));
-    calls.push({ url: url.toString(), method: init?.method ?? "GET", auth: init?.headers?.Authorization });
+    calls.push({ url: url.toString(), host: url.host, method: init?.method ?? "GET", auth: init?.headers?.Authorization });
     const body = url.host === "login.microsoftonline.com" ? { access_token: "SECRET-TOKEN", expires_in: 3600 } : { id: "x", etag: "e1" };
     return { ok: true, status: 200, text: async () => JSON.stringify(body), json: async () => body };
   });
@@ -63,7 +63,7 @@ describe("ARM client never sends the bearer token off ARM", () => {
   it("still sends a valid ARM id to management.azure.com with the token", async () => {
     const calls = stubFetch();
     await azure().getResource(ID, "2023-01-01");
-    const arm = calls.filter((c) => !c.url.includes("login.microsoftonline.com"));
+    const arm = calls.filter((c) => c.host !== "login.microsoftonline.com");
     expect(arm).toHaveLength(1);
     expect(arm[0]!.url).toBe(`https://management.azure.com${ID}?api-version=2023-01-01`);
     expect(arm[0]!.auth).toBe("Bearer SECRET-TOKEN");
@@ -72,7 +72,7 @@ describe("ARM client never sends the bearer token off ARM", () => {
   it("still follows a nextLink on the ARM host", async () => {
     const calls = stubFetch();
     await azure().request("GET", "https://management.azure.com/subscriptions/sub-1/resources?$skiptoken=abc", { apiVersion: "2021-04-01" });
-    expect(calls.some((c) => c.url.startsWith("https://management.azure.com/subscriptions/sub-1/resources"))).toBe(true);
+    expect(calls.some((c) => c.host === "management.azure.com" && new URL(c.url).pathname === "/subscriptions/sub-1/resources")).toBe(true);
   });
 
   it("rejects names that would escape their path segment in the builders (sub / rg / vm / group name)", async () => {
@@ -268,7 +268,7 @@ describe("scope is enforced on the subscription / resource group PARSED from the
       arguments: { resourceId: idIn("sub-1", "RG-OK"), resourceGroup: "rg-ok", subscription: "SUB-1", tags: { a: "b" } },
     });
     expect((res as { isError?: boolean }).isError).toBeFalsy();
-    expect(calls.some((c) => c.method === "PATCH" && c.url.startsWith("https://management.azure.com/subscriptions/sub-1/"))).toBe(true);
+    expect(calls.some((c) => c.method === "PATCH" && c.host === "management.azure.com" && new URL(c.url).pathname.startsWith("/subscriptions/sub-1/"))).toBe(true);
   });
 
   it("delete_resource_group / list_resources: traversal in a name cannot reach another group or subscription", async () => {
