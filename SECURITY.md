@@ -16,7 +16,12 @@ privileged automation and grant it the least access it needs.
   groups are the ones parsed from `resourceId` (compared case-insensitively); a `subscription` /
   `resourceGroup` argument that disagrees with the id is refused. With a resource-group allowlist set, ids
   outside any resource group are refused. `delete_resource` will not take a bare subscription or
-  resource-group id.
+  resource-group id, and its `resourceName` must equal the final segment of `resourceId`; the
+  `confirm` check and the approval prompt use the name from the id, not a model-supplied one.
+- **Listings respect the allowlists.** `list_subscriptions` and `list_resource_groups` drop entries outside
+  `AZURE_SUBSCRIPTION_ALLOWLIST` / `AZURE_RESOURCE_GROUP_ALLOWLIST`, and `list_resources` (including the
+  subscription-wide form) drops resources whose resource group, parsed from the resource id, is outside the
+  allowlist, or cannot be determined. Protected groups stay visible and are flagged `protected`.
 - **Constrain regions.** `AZURE_LOCATION_ALLOWLIST` limits where new resource groups
   may be created — a common governance requirement.
 - **Gate deletion explicitly.** `delete_resource_group` / `delete_resource` need

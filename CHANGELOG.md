@@ -29,6 +29,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `RG-PROD` no longer slips past a protected `rg-prod`.
 - `delete_resource` refuses a bare subscription or resource-group id (use `delete_resource_group`, which has the
   typed prompt and version pinning).
+- **`list_resources` no longer lists outside `AZURE_RESOURCE_GROUP_ALLOWLIST`.** Without a `resourceGroup`
+  argument it returned the whole subscription (names, types, locations of resources in groups the allowlist
+  excludes). Each result is now filtered by the resource group parsed from its id (case-insensitive); with an
+  allowlist set, an item whose group cannot be determined (missing/malformed id, subscription-scoped resource)
+  is dropped. Resources in `AZURE_PROTECTED_RESOURCE_GROUPS` remain readable and carry `protected: true`
+  (every item now has a `protected` field, as in `list_resource_groups`). `list_subscriptions`,
+  `list_locations` and `list_resource_groups` were already scoped; tests now pin that.
+- **`delete_resource` ties `resourceName` to the resource id.** The typed `confirm` was compared against the
+  model-supplied `resourceName`, which was not tied to the id, so a model could pair a destructive id with a
+  harmless-looking name and matching `confirm`, and the human saw that name. `resourceName` must now equal the
+  final segment of `resourceId` (case-insensitive) or the call is refused; the `confirm` check and the approval
+  prompt use the name taken from the id.
 - **Approval no longer fails open on timeout.** The human-approval prompt used the MCP SDK's default
   60 s request timeout, and a timeout fell through to "approved" (the `AZURE_ALLOW_DELETE` gate had
   already passed). A prompt nobody answered therefore auto-approved a destructive operation. A timeout

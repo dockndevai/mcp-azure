@@ -77,6 +77,11 @@ export class SecurityPolicy {
     return this.config.subscriptionAllowlist.some((s) => same(s, sub));
   }
 
+  /** True when AZURE_RESOURCE_GROUP_ALLOWLIST is set, i.e. listings must be filtered by resource group. */
+  get hasResourceGroupAllowlist(): boolean {
+    return this.config.resourceGroupAllowlist.length > 0;
+  }
+
   isResourceGroupAllowed(rg: string): boolean {
     if (this.config.resourceGroupAllowlist.length === 0) return true;
     return this.config.resourceGroupAllowlist.some((g) => same(g, rg));

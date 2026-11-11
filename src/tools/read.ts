@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolDef } from "./types.js";
-import { assertSegment } from "../azure/resource-id.js";
+import { assertSegment, resourceGroupOfListedId } from "../azure/resource-id.js";
 import { jsonResult, resolveResourceScope, resolveSub } from "./types.js";
 
 const subArg = { subscription: z.string().optional().describe("Subscription id (defaults to AZURE_SUBSCRIPTION_ID)") };
@@ -48,7 +48,7 @@ export const readTools: ToolDef[] = [
     capability: "read",
     config: {
       title: "List resources",
-      description: "List resources in a subscription, or within a specific resource group.",
+      description: "List resources in a subscription, or within a specific resource group (filtered by the resource group allowlist; resources in protected groups are flagged).",
       inputSchema: { ...subArg, resourceGroup: z.string().optional().describe("Limit to this resource group") },
     },
     handler: async (a, ctx) => {
@@ -56,7 +56,23 @@ export const readTools: ToolDef[] = [
       const rg = a.resourceGroup === undefined ? undefined : assertSegment(a.resourceGroup, "resource group name");
       ctx.policy.guard({ tool: "list_resources", capability: "read", subscription: sub, resourceGroup: rg });
       const data = (await ctx.client.listResources(sub, rg)) as { value?: Array<Record<string, unknown>> };
-      const items = (data.value ?? []).map((r) => ({ id: r.id, name: r.name, type: r.type, location: r.location, kind: r.kind }));
+      // A subscription-wide listing returns every group the principal can see. Filter by the group parsed from each
+      // id: outside the allowlist is dropped, and so is anything whose group cannot be determined (fail closed).
+      const restricted = ctx.policy.hasResourceGroupAllowlist;
+      const items = (data.value ?? []).flatMap((r) => {
+        const group = resourceGroupOfListedId(r.id);
+        if (restricted && (group === undefined || !ctx.policy.isResourceGroupAllowed(group))) return [];
+        return [
+          {
+            id: r.id,
+            name: r.name,
+            type: r.type,
+            location: r.location,
+            kind: r.kind,
+            protected: group !== undefined && ctx.policy.isResourceGroupProtected(group),
+          },
+        ];
+      });
       return jsonResult(items);
     },
   },

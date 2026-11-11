@@ -19,11 +19,11 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for **Azure**
 | --- | --- | --- | --- |
 | What can the server do? | `AZURE_MODE` | `read-only` | `read-only` → inventory; `read-write` → create RG, tag, VM power; `admin` → deletes. Tools above the mode are **never registered**. |
 | Which subscriptions? | `AZURE_SUBSCRIPTION_ALLOWLIST` | *(all)* | Operations on other subscriptions are refused. For tools taking a `resourceId`, the subscription is the one in the id. |
-| Which resource groups? | `AZURE_RESOURCE_GROUP_ALLOWLIST` | *(all)* | Operations outside the list are refused. For tools taking a `resourceId`, the group is the one in the id (case-insensitive); an optional `resourceGroup` argument must match it. |
+| Which resource groups? | `AZURE_RESOURCE_GROUP_ALLOWLIST` | *(all)* | Operations outside the list are refused, and `list_resources` / `list_resource_groups` omit resources and groups outside it (a resource whose group cannot be determined is omitted). For tools taking a `resourceId`, the group is the one in the id (case-insensitive); an optional `resourceGroup` argument must match it. |
 | Read-only-forever groups | `AZURE_PROTECTED_RESOURCE_GROUPS` | *(none)* | Readable, never mutable. |
 | Approved regions | `AZURE_LOCATION_ALLOWLIST` | *(any)* | New resource groups may only be created here. |
 | Can it delete? | `AZURE_ALLOW_DELETE` | `false` | Deletes need this **and** admin mode. |
-| Typed confirmation | `AZURE_REQUIRE_CONFIRMATION` | `true` | Deletes require `confirm` to equal the target name — not just a boolean. |
+| Typed confirmation | `AZURE_REQUIRE_CONFIRMATION` | `true` | Deletes require `confirm` to equal the target name — not just a boolean. For `delete_resource` that name is the final segment of `resourceId`; a differing `resourceName` is refused. |
 | Preview | `AZURE_DRY_RUN` | `false` | Write/admin tools validate + log intent, then return. |
 | Audit trail | `AZURE_AUDIT_LOG` | `true` | JSON line to stderr per guarded operation. |
 | Interactive confirmation | *(automatic)* | — | Destructive & high-impact actions prompt the human to approve via MCP elicitation before running. The prompt shows the tool, the exact arguments and a fingerprint; the target's version is pinned across the prompt and the action is refused if it changed; a prompt nobody answers is a refusal. `delete_resource_group` also asks the human to type the group name (this is separate from the model-supplied `confirm` argument above, which is checked first and still required when `AZURE_REQUIRE_CONFIRMATION=true`). |
