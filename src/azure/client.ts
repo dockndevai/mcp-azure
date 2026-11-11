@@ -69,7 +69,7 @@ function withoutProvisioningState(value: unknown): unknown {
   return out;
 }
 
-/** Bounds the nextLink walk when fingerprinting a resource group (50 pages of resources). */
+/** Bounds every nextLink walk (fingerprinting a resource group, and the list tools): 50 pages. */
 const MAX_PAGES = 50;
 
 interface Token {
@@ -136,8 +136,11 @@ export class AzureClient {
     }
   }
 
-  /** Follow `nextLink` paging, refusing any link that leaves ARM (the bearer token must not follow it). */
-  private async listAll<T>(
+  /**
+   * Follow `nextLink` paging, refusing any link that leaves ARM (the bearer token must not follow it).
+   * Stops after MAX_PAGES; `truncated` is true when more pages remained, so callers can say the result is partial.
+   */
+  async listAll<T>(
     path: string,
     opts: { apiVersion: string; query?: Record<string, string | undefined> },
   ): Promise<{ items: T[]; truncated: boolean }> {
@@ -232,8 +235,9 @@ export class AzureClient {
   }
 
   // --- Reads -----------------------------------------------------------------
+  // The list reads return `{ value, truncated }`: every page (up to MAX_PAGES), and whether more remained.
   async listSubscriptions() {
-    return this.request("GET", "/subscriptions", { apiVersion: "2022-12-01" });
+    return this.listPaged("/subscriptions", "2022-12-01");
   }
   async listLocations(sub: string) {
     assertSegment(sub, "subscription id");
@@ -241,7 +245,7 @@ export class AzureClient {
   }
   async listResourceGroups(sub: string) {
     assertSegment(sub, "subscription id");
-    return this.request("GET", `/subscriptions/${sub}/resourcegroups`, { apiVersion: "2021-04-01" });
+    return this.listPaged(`/subscriptions/${sub}/resourcegroups`, "2021-04-01");
   }
   async listResources(sub: string, rg?: string) {
     assertSegment(sub, "subscription id");
@@ -249,7 +253,11 @@ export class AzureClient {
     const path = rg
       ? `/subscriptions/${sub}/resourceGroups/${rg}/resources`
       : `/subscriptions/${sub}/resources`;
-    return this.request("GET", path, { apiVersion: "2021-04-01" });
+    return this.listPaged(path, "2021-04-01");
+  }
+  private async listPaged<T = Record<string, unknown>>(path: string, apiVersion: string): Promise<{ value: T[]; truncated: boolean }> {
+    const { items, truncated } = await this.listAll<T>(path, { apiVersion });
+    return { value: items, truncated };
   }
   async getResource(resourceId: string, apiVersion: string) {
     parseResourceId(resourceId);

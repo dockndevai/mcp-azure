@@ -33,6 +33,8 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for **Azure**
 
 **Read** (`read-only`+): `list_subscriptions`, `list_locations`, `list_resource_groups`, `list_resources`, `get_resource`
 
+The three paged listings (`list_subscriptions`, `list_resource_groups`, `list_resources`) return every page up to a 50-page limit. A complete listing is a plain JSON array; if the limit is hit the result is `{ "truncated": true, "note": …, "items": […] }`, so a partial list is never mistaken for a complete one.
+
 **Write** (`read-write`+): `create_resource_group`, `tag_resource`, `control_vm`
 
 **Admin** (`admin`): `delete_resource_group`, `delete_resource` (both need `AZURE_ALLOW_DELETE` + typed `confirm`)

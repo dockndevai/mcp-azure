@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ToolDef } from "./types.js";
 import { assertSegment, resourceGroupOfListedId } from "../azure/resource-id.js";
-import { jsonResult, resolveResourceScope, resolveSub } from "./types.js";
+import { jsonResult, listResult, resolveResourceScope, resolveSub } from "./types.js";
 
 const subArg = { subscription: z.string().optional().describe("Subscription id (defaults to AZURE_SUBSCRIPTION_ID)") };
 
@@ -12,11 +12,14 @@ export const readTools: ToolDef[] = [
     config: { title: "List subscriptions", description: "List subscriptions the service principal can see (filtered by allowlist).", inputSchema: {} },
     handler: async (_a, { client, policy }) => {
       policy.guard({ tool: "list_subscriptions", capability: "read" });
-      const data = (await client.listSubscriptions()) as { value?: Array<{ subscriptionId: string; displayName: string; state: string }> };
+      const data = (await client.listSubscriptions()) as {
+        value?: Array<{ subscriptionId: string; displayName: string; state: string }>;
+        truncated?: boolean;
+      };
       const subs = (data.value ?? [])
         .filter((s) => policy.isSubscriptionAllowed(s.subscriptionId))
         .map((s) => ({ subscriptionId: s.subscriptionId, displayName: s.displayName, state: s.state }));
-      return jsonResult(subs);
+      return listResult(subs, data.truncated);
     },
   },
   {
@@ -36,11 +39,11 @@ export const readTools: ToolDef[] = [
     handler: async (a, ctx) => {
       const sub = resolveSub(a, ctx);
       ctx.policy.guard({ tool: "list_resource_groups", capability: "read", subscription: sub });
-      const data = (await ctx.client.listResourceGroups(sub)) as { value?: Array<{ name: string; location: string }> };
+      const data = (await ctx.client.listResourceGroups(sub)) as { value?: Array<{ name: string; location: string }>; truncated?: boolean };
       const groups = (data.value ?? [])
         .filter((g) => ctx.policy.isResourceGroupAllowed(g.name))
         .map((g) => ({ name: g.name, location: g.location, protected: ctx.policy.isResourceGroupProtected(g.name) }));
-      return jsonResult(groups);
+      return listResult(groups, data.truncated);
     },
   },
   {
@@ -55,7 +58,7 @@ export const readTools: ToolDef[] = [
       const sub = resolveSub(a, ctx);
       const rg = a.resourceGroup === undefined ? undefined : assertSegment(a.resourceGroup, "resource group name");
       ctx.policy.guard({ tool: "list_resources", capability: "read", subscription: sub, resourceGroup: rg });
-      const data = (await ctx.client.listResources(sub, rg)) as { value?: Array<Record<string, unknown>> };
+      const data = (await ctx.client.listResources(sub, rg)) as { value?: Array<Record<string, unknown>>; truncated?: boolean };
       // A subscription-wide listing returns every group the principal can see. Filter by the group parsed from each
       // id: outside the allowlist is dropped, and so is anything whose group cannot be determined (fail closed).
       const restricted = ctx.policy.hasResourceGroupAllowlist;
@@ -73,7 +76,7 @@ export const readTools: ToolDef[] = [
           },
         ];
       });
-      return jsonResult(items);
+      return listResult(items, data.truncated);
     },
   },
   {
