@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ToolDef } from "./types.js";
-import { jsonResult, resolveSub, textResult } from "./types.js";
+import { assertSegment } from "../azure/resource-id.js";
+import { jsonResult, resolveResourceScope, resolveSub, textResult } from "./types.js";
 
 const subArg = { subscription: z.string().optional().describe("Subscription id (defaults to AZURE_SUBSCRIPTION_ID)") };
 
@@ -20,7 +21,7 @@ export const writeTools: ToolDef[] = [
     },
     handler: async (a, ctx) => {
       const sub = resolveSub(a, ctx);
-      const name = a.name as string;
+      const name = assertSegment(a.name, "resource group name");
       const location = a.location as string;
       const { dryRun } = ctx.policy.guard({
         tool: "create_resource_group",
@@ -40,22 +41,24 @@ export const writeTools: ToolDef[] = [
       title: "Tag a resource",
       description: "Merge tags onto any resource by its ARM id (uses the generic Tags API).",
       inputSchema: {
-        ...subArg,
+        subscription: z.string().optional().describe("Optional; must match the subscription in resourceId (policy is evaluated on the id)"),
         resourceId: z.string().describe("Full ARM resource id"),
-        resourceGroup: z.string().optional().describe("Resource group (for scoping/audit)"),
+        resourceGroup: z.string().optional().describe("Optional; must match the resource group in resourceId (policy is evaluated on the id)"),
         tags: z.record(z.string(), z.string()).describe("Tags to merge, e.g. { \"env\": \"prod\", \"owner\": \"team-a\" }"),
       },
     },
     handler: async (a, ctx) => {
-      const sub = resolveSub(a, ctx);
+      // Scope comes from the id: it is what ARM will modify. Never the optional arguments.
+      const scope = resolveResourceScope(a);
       const { dryRun } = ctx.policy.guard({
         tool: "tag_resource",
         capability: "write",
-        subscription: sub,
-        resourceGroup: a.resourceGroup as string | undefined,
+        subscription: scope.subscription,
+        resourceGroup: scope.resourceGroup,
+        resourceGroupRequired: true,
       });
-      if (dryRun) return textResult(`[dry-run] Would merge tags onto ${a.resourceId}: ${JSON.stringify(a.tags)}`);
-      return jsonResult(await ctx.client.tagResource(a.resourceId as string, a.tags as Record<string, string>));
+      if (dryRun) return textResult(`[dry-run] Would merge tags onto ${scope.id}: ${JSON.stringify(a.tags)}`);
+      return jsonResult(await ctx.client.tagResource(scope.id, a.tags as Record<string, string>));
     },
   },
   {
@@ -73,7 +76,8 @@ export const writeTools: ToolDef[] = [
     },
     handler: async (a, ctx) => {
       const sub = resolveSub(a, ctx);
-      const rg = a.resourceGroup as string;
+      const rg = assertSegment(a.resourceGroup, "resource group name");
+      assertSegment(a.vmName, "virtual machine name");
       const { dryRun } = ctx.policy.guard({ tool: "control_vm", capability: "write", subscription: sub, resourceGroup: rg });
       if (dryRun) return textResult(`[dry-run] Would ${a.action} VM ${a.vmName} in ${rg}.`);
       // Powering off / deallocating / restarting interrupts the VM — confirm those; a plain start doesn't.

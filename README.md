@@ -18,8 +18,8 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for **Azure**
 | Concern | Flag | Default | Effect |
 | --- | --- | --- | --- |
 | What can the server do? | `AZURE_MODE` | `read-only` | `read-only` → inventory; `read-write` → create RG, tag, VM power; `admin` → deletes. Tools above the mode are **never registered**. |
-| Which subscriptions? | `AZURE_SUBSCRIPTION_ALLOWLIST` | *(all)* | Operations on other subscriptions are refused. |
-| Which resource groups? | `AZURE_RESOURCE_GROUP_ALLOWLIST` | *(all)* | Operations outside the list are refused. |
+| Which subscriptions? | `AZURE_SUBSCRIPTION_ALLOWLIST` | *(all)* | Operations on other subscriptions are refused. For tools taking a `resourceId`, the subscription is the one in the id. |
+| Which resource groups? | `AZURE_RESOURCE_GROUP_ALLOWLIST` | *(all)* | Operations outside the list are refused. For tools taking a `resourceId`, the group is the one in the id (case-insensitive); an optional `resourceGroup` argument must match it. |
 | Read-only-forever groups | `AZURE_PROTECTED_RESOURCE_GROUPS` | *(none)* | Readable, never mutable. |
 | Approved regions | `AZURE_LOCATION_ALLOWLIST` | *(any)* | New resource groups may only be created here. |
 | Can it delete? | `AZURE_ALLOW_DELETE` | `false` | Deletes need this **and** admin mode. |

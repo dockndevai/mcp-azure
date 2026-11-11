@@ -9,6 +9,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Security
 - **Approval prompts are fully reviewable.** Arguments are shown in full up to 16 000 characters (previously cut at 1500, so a padded prefix could hide the tail of a long statement); a longer action is refused instead of approved blind. Secret redaction in prompts matches whole words (`bypass`/`tokenizer` are no longer shown as `[redacted]`).
 - laya-guard now receives the secret-redacted arguments (`canonicalArgs`) instead of `JSON.stringify(args)`, so credentials in tool arguments no longer reach the guard prompt, the guard daemon, or its log.
+- **The ARM bearer token can no longer be sent to another host.** `AzureClient.request()` sent the token to
+  any path starting with `http`, so `get_resource` / `delete_resource` / `tag_resource` with a model-supplied
+  `resourceId` of `https://attacker.example/...` sent the Azure token there. Every request URL is now built in
+  one place and must be a relative ARM path made of plain segments or an `https` URL on exactly
+  `management.azure.com` (no other host, port, scheme or userinfo); anything else is refused BEFORE a token is
+  acquired. Tools additionally require `resourceId` to be an ARM id (`/subscriptions/{id}/...`), and every
+  subscription / resource group / VM / resource name interpolated into a path must be a plain segment (no
+  `/`, `..`, `?`, `#`, `%`, `\` or whitespace), which also closes `..` traversal out of the checked scope.
+- **Scope checks use the subscription and resource group parsed from the resource id.** `get_resource`,
+  `tag_resource` and `delete_resource` evaluated the subscription / resource-group allowlists and the
+  protected-resource-group check on the optional model-supplied `resourceGroup` argument (`get_resource`
+  passed none; `delete_resource` checked no subscription), so omitting it or naming a different group skipped
+  the checks. They now check what is parsed from the id, and a supplied `subscription` / `resourceGroup` that
+  disagrees with the id is refused. With `AZURE_RESOURCE_GROUP_ALLOWLIST` set, a subscription-scoped id (no
+  resource group) is refused.
+- **Subscription, resource-group and protected-group comparisons are case-insensitive** (ARM names are), so
+  `RG-PROD` no longer slips past a protected `rg-prod`.
+- `delete_resource` refuses a bare subscription or resource-group id (use `delete_resource_group`, which has the
+  typed prompt and version pinning).
 - **Approval no longer fails open on timeout.** The human-approval prompt used the MCP SDK's default
   60 s request timeout, and a timeout fell through to "approved" (the `AZURE_ALLOW_DELETE` gate had
   already passed). A prompt nobody answered therefore auto-approved a destructive operation. A timeout

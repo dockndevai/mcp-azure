@@ -47,11 +47,19 @@ export interface GuardContext {
   capability: Capability;
   subscription?: string;
   resourceGroup?: string;
+  /**
+   * The call targets one resource by id, so it must name the resource group it lives in. When a resource-group
+   * allowlist is configured, an id with no resource group (subscription-scoped) is outside every allowed group.
+   */
+  resourceGroupRequired?: boolean;
   location?: string;
   destructive?: boolean;
   confirmExpected?: string;
   confirmProvided?: string;
 }
+
+/** Subscription ids and resource group names are case-insensitive in ARM, so every comparison is too. */
+const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 
 export class SecurityPolicy {
   constructor(private readonly config: SecurityConfig) {}
@@ -66,16 +74,16 @@ export class SecurityPolicy {
 
   isSubscriptionAllowed(sub: string): boolean {
     if (this.config.subscriptionAllowlist.length === 0) return true;
-    return this.config.subscriptionAllowlist.includes(sub);
+    return this.config.subscriptionAllowlist.some((s) => same(s, sub));
   }
 
   isResourceGroupAllowed(rg: string): boolean {
     if (this.config.resourceGroupAllowlist.length === 0) return true;
-    return this.config.resourceGroupAllowlist.includes(rg);
+    return this.config.resourceGroupAllowlist.some((g) => same(g, rg));
   }
 
   isResourceGroupProtected(rg: string): boolean {
-    return this.config.protectedResourceGroups.includes(rg);
+    return this.config.protectedResourceGroups.some((g) => same(g, rg));
   }
 
   isLocationAllowed(loc: string): boolean {
@@ -95,6 +103,13 @@ export class SecurityPolicy {
       this.audit(ctx, "DENY", `subscription '${ctx.subscription}' not in allowlist`);
       throw new PolicyError(
         `Subscription '${ctx.subscription}' is not in the configured allowlist (AZURE_SUBSCRIPTION_ALLOWLIST).`,
+      );
+    }
+
+    if (ctx.resourceGroup === undefined && ctx.resourceGroupRequired && this.config.resourceGroupAllowlist.length > 0) {
+      this.audit(ctx, "DENY", "resource is not inside a resource group");
+      throw new PolicyError(
+        `Operation '${ctx.tool}' targets a resource outside any resource group, but a resource group allowlist is configured (AZURE_RESOURCE_GROUP_ALLOWLIST).`,
       );
     }
 
