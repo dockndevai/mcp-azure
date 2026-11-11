@@ -78,7 +78,13 @@ export const writeTools: ToolDef[] = [
       if (dryRun) return textResult(`[dry-run] Would ${a.action} VM ${a.vmName} in ${rg}.`);
       // Powering off / deallocating / restarting interrupts the VM — confirm those; a plain start doesn't.
       if (a.action !== "start") {
-        const ok = await ctx.confirm.confirm({ action: `${a.action} VM`, target: a.vmName as string, details: { resourceGroup: rg } });
+        const vmName = a.vmName as string;
+        const ok = await ctx.confirm.confirm({
+          action: `${a.action} VM`,
+          target: vmName,
+          details: { resourceGroup: rg },
+          probe: () => ctx.client.vmVersion(sub, rg, vmName),
+        });
         if (!ok.approved) return textResult(`Action cancelled — ${ok.reason}.`);
       }
       await ctx.client.controlVm(sub, rg, a.vmName as string, a.action as string);

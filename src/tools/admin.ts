@@ -36,7 +36,15 @@ export const adminTools: ToolDef[] = [
         confirmProvided: a.confirm as string | undefined,
       });
       if (dryRun) return textResult(`[dry-run] Would delete resource group '${name}' and all its resources.`);
-      const ok = await ctx.confirm.confirm({ action: "delete resource group (and everything in it)", target: name, details: { subscription: sub } });
+      // typed: the human must also type the group name. This is separate from (and in addition to) the
+      // model-supplied `confirm` argument checked by policy.guard above, which a human never sees.
+      const ok = await ctx.confirm.confirm({
+        action: "delete resource group (and everything in it)",
+        target: name,
+        details: { subscription: sub },
+        typed: true,
+        probe: () => ctx.client.resourceGroupVersion(sub, name),
+      });
       if (!ok.approved) return textResult(`Deletion cancelled — ${ok.reason}.`);
       await ctx.client.deleteResourceGroup(sub, name);
       return jsonResult({ deleted: true, resourceGroup: name });
@@ -69,7 +77,14 @@ export const adminTools: ToolDef[] = [
         confirmProvided: a.confirm as string | undefined,
       });
       if (dryRun) return textResult(`[dry-run] Would delete resource '${name}' (${a.resourceId}).`);
-      const ok = await ctx.confirm.confirm({ action: "delete resource", target: name, details: { id: a.resourceId as string } });
+      const resourceId = a.resourceId as string;
+      const apiVersion = a.apiVersion as string;
+      const ok = await ctx.confirm.confirm({
+        action: "delete resource",
+        target: name,
+        details: { id: resourceId },
+        probe: () => ctx.client.resourceVersion(resourceId, apiVersion),
+      });
       if (!ok.approved) return textResult(`Deletion cancelled — ${ok.reason}.`);
       await ctx.client.deleteResource(a.resourceId as string, a.apiVersion as string);
       return jsonResult({ deleted: true, resource: name });

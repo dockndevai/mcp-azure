@@ -58,6 +58,7 @@ export function loadConfig(): AppConfig {
       requireConfirmation: bool("AZURE_REQUIRE_CONFIRMATION", true),
       dryRun: bool("AZURE_DRY_RUN", false),
       auditLog: bool("AZURE_AUDIT_LOG", true),
+      requireHumanApproval: bool("AZURE_REQUIRE_HUMAN_APPROVAL", false),
     },
   };
 }
