@@ -1,7 +1,8 @@
 import { z } from "zod";
 import type { ToolDef } from "./types.js";
-import { assertSegment } from "../azure/resource-id.js";
+import { assertSegment, resourceNameOf } from "../azure/resource-id.js";
 import { jsonResult, resolveResourceScope, resolveSub, textResult } from "./types.js";
+import { PolicyError } from "../security.js";
 
 const subArg = { subscription: z.string().optional().describe("Subscription id (defaults to AZURE_SUBSCRIPTION_ID)") };
 
@@ -61,18 +62,26 @@ export const adminTools: ToolDef[] = [
         "equal to the resource name. Provide the api-version for the resource type. Irreversible.",
       inputSchema: {
         resourceId: z.string().describe("Full ARM resource id"),
-        resourceName: z.string().describe("Resource name — used for the confirmation check"),
+        resourceName: z.string().describe("Resource name — must equal the final segment of resourceId (case-insensitive); the confirmation check and the approval prompt use the name from the id"),
         apiVersion: z.string().describe("API version for this resource type"),
         subscription: z.string().optional().describe("Optional; must match the subscription in resourceId (policy is evaluated on the id)"),
         resourceGroup: z.string().optional().describe("Optional; must match the resource group in resourceId (policy is evaluated on the id)"),
-        confirm: z.string().optional().describe("Must equal the resource name to proceed"),
+        confirm: z.string().optional().describe("Must equal the resource name (the final segment of resourceId) to proceed"),
       },
     },
     handler: async (a, ctx) => {
-      const name = a.resourceName as string;
       // Scope comes from the id: it is what ARM will delete. A bare subscription / resource-group id is refused
       // (resource groups go through delete_resource_group and its typed prompt).
       const scope = resolveResourceScope(a, { requireResource: true });
+      // The name the human is shown and the `confirm` is checked against is derived from the id, never taken from
+      // the model: `resourceName` is only an assertion and must be the id's final segment (ARM names are
+      // case-insensitive). Otherwise a model could pair a destructive id with a harmless-looking name.
+      const name = resourceNameOf(scope.id);
+      if (typeof a.resourceName !== "string" || a.resourceName.toLowerCase() !== name.toLowerCase()) {
+        throw new PolicyError(
+          `resourceName '${String(a.resourceName)}' does not match the resource id, whose resource name is '${name}'; policy and confirmation are evaluated on the id.`,
+        );
+      }
       const { dryRun } = ctx.policy.guard({
         tool: "delete_resource",
         capability: "admin",

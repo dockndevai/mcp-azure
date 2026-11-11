@@ -72,3 +72,21 @@ export function parseResourceId(raw: unknown, opts: { requireResource?: boolean 
   }
   return { id: raw, subscription, ...(resourceGroup !== undefined ? { resourceGroup } : {}) };
 }
+
+/** The resource's own name: the final path segment of a validated id (what ARM will act on). */
+export function resourceNameOf(id: string): string {
+  return id.slice(id.lastIndexOf("/") + 1);
+}
+
+/**
+ * Resource group of an id ARM returned in a listing, or undefined when it cannot be determined (missing,
+ * not a string, malformed, or subscription-scoped). Callers that enforce an allowlist must treat undefined as
+ * "not allowed".
+ */
+export function resourceGroupOfListedId(id: unknown): string | undefined {
+  try {
+    return parseResourceId(id).resourceGroup;
+  } catch {
+    return undefined;
+  }
+}
