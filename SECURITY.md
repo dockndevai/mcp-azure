@@ -22,6 +22,10 @@ privileged automation and grant it the least access it needs.
   `AZURE_SUBSCRIPTION_ALLOWLIST` / `AZURE_RESOURCE_GROUP_ALLOWLIST`, and `list_resources` (including the
   subscription-wide form) drops resources whose resource group, parsed from the resource id, is outside the
   allowlist, or cannot be determined. Protected groups stay visible and are flagged `protected`.
+  `list_subscriptions`, `list_resource_groups` and `list_resources` follow ARM `nextLink` paging (only links
+  on `management.azure.com`, at most 50 pages) before filtering, so a large subscription is not silently
+  under-reported. If the page limit is hit the result is `{ "truncated": true, "note": …, "items": […] }`
+  instead of a plain array: treat absent entries as unknown, not as non-existent.
 - **Constrain regions.** `AZURE_LOCATION_ALLOWLIST` limits where new resource groups
   may be created — a common governance requirement.
 - **Gate deletion explicitly.** `delete_resource_group` / `delete_resource` need

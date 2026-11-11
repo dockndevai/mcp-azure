@@ -35,6 +35,19 @@ export interface ToolDef<Shape extends ZodRawShape = ZodRawShape> {
 export function jsonResult(value: unknown): ToolResult {
   return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
 }
+/**
+ * A listing result. A complete listing is the plain array. When the page cap was hit it is wrapped so the
+ * truncation is explicit: a partial list must never read as a complete one (especially after allowlist filtering,
+ * where "not shown" would otherwise look like "does not exist").
+ */
+export function listResult(items: unknown[], truncated: boolean | undefined): ToolResult {
+  if (!truncated) return jsonResult(items);
+  return jsonResult({
+    truncated: true,
+    note: "Incomplete: the page limit was reached before the end of the listing, so entries are missing (and any allowlist filter was applied only to the pages read). Narrow the query where possible (for list_resources, pass resourceGroup).",
+    items,
+  });
+}
 export function textResult(text: string): ToolResult {
   return { content: [{ type: "text", text }] };
 }

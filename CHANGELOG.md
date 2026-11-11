@@ -36,6 +36,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   is dropped. Resources in `AZURE_PROTECTED_RESOURCE_GROUPS` remain readable and carry `protected: true`
   (every item now has a `protected` field, as in `list_resource_groups`). `list_subscriptions`,
   `list_locations` and `list_resource_groups` were already scoped; tests now pin that.
+- **`list_subscriptions`, `list_resource_groups` and `list_resources` now follow ARM paging.** They made a
+  single request and ignored `nextLink`, so a large subscription returned only its first page (about 1000
+  entries) and the allowlist filtering above then silently under-reported. They now use the existing
+  `listAll` helper, which only follows `nextLink`s on `management.azure.com` and stops after 50 pages. When
+  the cap is hit the result is `{ "truncated": true, "note": …, "items": […] }` instead of a plain array, so a
+  partial listing is explicit; a complete listing is unchanged (a plain array). `list_locations` is not paged.
 - **`delete_resource` ties `resourceName` to the resource id.** The typed `confirm` was compared against the
   model-supplied `resourceName`, which was not tied to the id, so a model could pair a destructive id with a
   harmless-looking name and matching `confirm`, and the human saw that name. `resourceName` must now equal the
