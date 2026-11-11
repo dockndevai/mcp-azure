@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-11
+
+### Security
+- **Approval no longer fails open on timeout.** The human-approval prompt used the MCP SDK's default
+  60 s request timeout, and a timeout fell through to "approved" (the `AZURE_ALLOW_DELETE` gate had
+  already passed). A prompt nobody answered therefore auto-approved a destructive operation. A timeout
+  is now a refusal, and the wait defaults to 5 minutes.
+
+### Added
+- **Approvals are bound to the exact action.** The prompt shows the tool, the full (secret-redacted)
+  arguments and a fingerprint; every approval and refusal is written to the audit log as
+  `"audit":"approval"` with the fingerprint, resource version and `approvedBy` (`human` / `flag-only`).
+- **Approvals are bound to the target's version.** `delete_resource_group`, `delete_resource` and
+  `control_vm` (powerOff / restart / deallocate) read a version token before the prompt and again after
+  the human answers, and refuse if it changed: resource group = id, location, tags and the id +
+  createdTime of its resources; resource = id + ARM `etag` (or a hash of the GET body without
+  `provisioningState` when the type returns no etag); VM = id, `vmId`, size and OS-disk id.
+- `AZURE_REQUIRE_HUMAN_APPROVAL=true` — refuse destructive ops when the client cannot elicit.
+- `delete_resource_group` asks the human to type the group name. This is in addition to, not instead
+  of, the existing model-supplied `confirm` argument (`AZURE_REQUIRE_CONFIRMATION`), which is unchanged
+  and still checked first.
+
+Tracking issue: https://github.com/dockndevai/mcp-core/issues/1
+
 ## [0.3.5] - 2026-11-09
 
 ### Changed

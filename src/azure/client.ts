@@ -3,6 +3,7 @@
  * Auth is OAuth2 client credentials against Entra ID; tokens are cached.
  * https://learn.microsoft.com/rest/api/resources/
  */
+import { createHash } from "node:crypto";
 import type { AzureConnection } from "../config.js";
 
 const ARM = "https://management.azure.com";
@@ -13,6 +14,37 @@ export class AzureError extends Error {
     this.name = "AzureError";
   }
 }
+
+/** Deterministic JSON (sorted keys) so equal content always hashes equally. */
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const o = value as Record<string, unknown>;
+  return `{${Object.keys(o)
+    .sort()
+    .filter((k) => o[k] !== undefined)
+    .map((k) => `${JSON.stringify(k)}:${canonical(o[k])}`)
+    .join(",")}}`;
+}
+
+function digest(value: unknown): string {
+  return createHash("sha256").update(canonical(value)).digest("hex").slice(0, 12);
+}
+
+/** Drop `provisioningState` (it flips while an operation runs) at any depth; everything else is content. */
+function withoutProvisioningState(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutProvisioningState);
+  if (value === null || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (k.toLowerCase() === "provisioningstate") continue;
+    out[k] = withoutProvisioningState(v);
+  }
+  return out;
+}
+
+/** Bounds the nextLink walk when fingerprinting a resource group (50 pages of resources). */
+const MAX_PAGES = 50;
 
 interface Token {
   accessToken: string;
@@ -76,6 +108,95 @@ export class AzureClient {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /** Follow `nextLink` paging, refusing any link that leaves ARM (the bearer token must not follow it). */
+  private async listAll<T>(
+    path: string,
+    opts: { apiVersion: string; query?: Record<string, string | undefined> },
+  ): Promise<{ items: T[]; truncated: boolean }> {
+    const items: T[] = [];
+    let next: string | undefined = path;
+    let first = true;
+    for (let page = 0; next && page < MAX_PAGES; page++) {
+      if (!first && !next.startsWith(`${ARM}/`)) throw new AzureError(`Refusing to follow a nextLink outside ${ARM}.`, 0);
+      const res: { value?: T[]; nextLink?: string } = await this.request("GET", next, first ? opts : { apiVersion: opts.apiVersion });
+      items.push(...(res?.value ?? []));
+      next = res?.nextLink;
+      first = false;
+    }
+    return { items, truncated: next !== undefined };
+  }
+
+  private async getOrUndefined<T>(path: string, apiVersion: string): Promise<T | undefined> {
+    try {
+      return await this.request<T>("GET", path, { apiVersion });
+    } catch (err) {
+      if (err instanceof AzureError && err.status === 404) return undefined;
+      throw err;
+    }
+  }
+
+  // --- Version tokens (pinned across a human-approval prompt) ----------------
+  /**
+   * Resource groups carry no etag, so the token is a hash of the group's id, location and tags plus the
+   * (id, createdTime) of every resource inside it: a delete that was approved for one set of contents is
+   * refused if a resource was added, removed or recreated while the human was deciding. NOT detected:
+   * in-place changes to a contained resource's configuration, and a contained resource recreated with
+   * the same id within the same createdTime second.
+   */
+  async resourceGroupVersion(sub: string, name: string): Promise<string | undefined> {
+    const rg = await this.getOrUndefined<{ id?: string; location?: string; tags?: Record<string, string> }>(
+      `/subscriptions/${sub}/resourcegroups/${name}`,
+      "2021-04-01",
+    );
+    if (!rg) return undefined;
+    const { items, truncated } = await this.listAll<{ id?: string; createdTime?: string }>(
+      `/subscriptions/${sub}/resourceGroups/${name}/resources`,
+      { apiVersion: "2021-04-01", query: { $expand: "createdTime" } },
+    );
+    const members = items.map((r) => `${r.id ?? ""}@${r.createdTime ?? ""}`).sort();
+    return digest({ id: rg.id, location: rg.location, tags: rg.tags ?? {}, members, truncated });
+  }
+
+  /**
+   * Single resource: its id plus the ARM `etag` when the resource type returns one; otherwise a hash of the
+   * resource body without `provisioningState`. NOT detected: an etag-less resource whose change is confined to
+   * fields the GET does not return, or a same-id recreate with identical properties.
+   */
+  async resourceVersion(resourceId: string, apiVersion: string): Promise<string | undefined> {
+    const r = await this.getOrUndefined<Record<string, unknown>>(resourceId, apiVersion);
+    if (!r) return undefined;
+    if (typeof r.etag === "string" && r.etag) return digest({ id: r.id ?? resourceId, etag: r.etag });
+    return digest({ id: r.id ?? resourceId, body: withoutProvisioningState(r) });
+  }
+
+  /**
+   * VM: its id, the platform-assigned `vmId` (a delete + recreate under the same name gets a new vmId), size and
+   * OS-disk id. Deliberately excludes power state, tags and provisioningState, which change without the VM being
+   * a different VM. NOT detected: changes to data disks or NICs.
+   */
+  async vmVersion(sub: string, rg: string, vm: string): Promise<string | undefined> {
+    type Vm = {
+      id?: string;
+      properties?: {
+        vmId?: string;
+        hardwareProfile?: { vmSize?: string };
+        storageProfile?: { osDisk?: { name?: string; managedDisk?: { id?: string } } };
+      };
+    };
+    const v = await this.getOrUndefined<Vm>(
+      `/subscriptions/${sub}/resourceGroups/${rg}/providers/Microsoft.Compute/virtualMachines/${vm}`,
+      "2023-07-01",
+    );
+    if (!v) return undefined;
+    const p = v.properties ?? {};
+    return digest({
+      id: v.id,
+      vmId: p.vmId,
+      size: p.hardwareProfile?.vmSize,
+      osDisk: p.storageProfile?.osDisk?.managedDisk?.id ?? p.storageProfile?.osDisk?.name,
+    });
   }
 
   // --- Reads -----------------------------------------------------------------

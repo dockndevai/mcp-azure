@@ -26,7 +26,8 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for **Azure**
 | Typed confirmation | `AZURE_REQUIRE_CONFIRMATION` | `true` | Deletes require `confirm` to equal the target name — not just a boolean. |
 | Preview | `AZURE_DRY_RUN` | `false` | Write/admin tools validate + log intent, then return. |
 | Audit trail | `AZURE_AUDIT_LOG` | `true` | JSON line to stderr per guarded operation. |
-| Interactive confirmation | *(automatic)* | — | Destructive & high-impact actions prompt the human to approve via MCP elicitation before running; clients without elicitation fall back to the `*_ALLOW_*` gate. |
+| Interactive confirmation | *(automatic)* | — | Destructive & high-impact actions prompt the human to approve via MCP elicitation before running. The prompt shows the tool, the exact arguments and a fingerprint; the target's version is pinned across the prompt and the action is refused if it changed; a prompt nobody answers is a refusal. `delete_resource_group` also asks the human to type the group name (this is separate from the model-supplied `confirm` argument above, which is checked first and still required when `AZURE_REQUIRE_CONFIRMATION=true`). |
+| Require a human | `AZURE_REQUIRE_HUMAN_APPROVAL` | `false` | When `true`, destructive ops are **refused** if the client cannot elicit (instead of falling back to the `*_ALLOW_*` gate alone). |
 
 ## Tools
 
