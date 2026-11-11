@@ -11,6 +11,12 @@ privileged automation and grant it the least access it needs.
   control — assign Reader to begin. `AZURE_SUBSCRIPTION_ALLOWLIST` and
   `AZURE_RESOURCE_GROUP_ALLOWLIST` further constrain reach, and
   `AZURE_PROTECTED_RESOURCE_GROUPS` marks groups that can be read but never mutated.
+- **Scope is judged on the resource id, not on arguments.** For `get_resource`, `tag_resource` and
+  `delete_resource` the subscription and resource group checked against the allowlists and the protected
+  groups are the ones parsed from `resourceId` (compared case-insensitively); a `subscription` /
+  `resourceGroup` argument that disagrees with the id is refused. With a resource-group allowlist set, ids
+  outside any resource group are refused. `delete_resource` will not take a bare subscription or
+  resource-group id.
 - **Constrain regions.** `AZURE_LOCATION_ALLOWLIST` limits where new resource groups
   may be created — a common governance requirement.
 - **Gate deletion explicitly.** `delete_resource_group` / `delete_resource` need
@@ -42,6 +48,10 @@ privileged automation and grant it the least access it needs.
 
 - The client secret is read from the environment, exchanged for a short-lived ARM
   token against Entra ID, and never logged or returned in tool results.
+- The ARM token is only ever sent to `https://management.azure.com`. Model-supplied ids must be ARM
+  paths (`/subscriptions/{id}/...`) made of plain segments; absolute URLs, other hosts, `..` and encoded
+  separators are rejected before a token is requested. Only paging links returned by ARM itself may be an
+  absolute URL, and only on that host.
 
 ## Reporting a vulnerability
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ToolDef } from "./types.js";
-import { jsonResult, resolveSub, textResult } from "./types.js";
+import { assertSegment } from "../azure/resource-id.js";
+import { jsonResult, resolveResourceScope, resolveSub, textResult } from "./types.js";
 
 const subArg = { subscription: z.string().optional().describe("Subscription id (defaults to AZURE_SUBSCRIPTION_ID)") };
 
@@ -25,7 +26,7 @@ export const adminTools: ToolDef[] = [
     },
     handler: async (a, ctx) => {
       const sub = resolveSub(a, ctx);
-      const name = a.name as string;
+      const name = assertSegment(a.name, "resource group name");
       const { dryRun } = ctx.policy.guard({
         tool: "delete_resource_group",
         capability: "admin",
@@ -62,22 +63,28 @@ export const adminTools: ToolDef[] = [
         resourceId: z.string().describe("Full ARM resource id"),
         resourceName: z.string().describe("Resource name — used for the confirmation check"),
         apiVersion: z.string().describe("API version for this resource type"),
-        resourceGroup: z.string().optional().describe("Resource group (for scoping/audit)"),
+        subscription: z.string().optional().describe("Optional; must match the subscription in resourceId (policy is evaluated on the id)"),
+        resourceGroup: z.string().optional().describe("Optional; must match the resource group in resourceId (policy is evaluated on the id)"),
         confirm: z.string().optional().describe("Must equal the resource name to proceed"),
       },
     },
     handler: async (a, ctx) => {
       const name = a.resourceName as string;
+      // Scope comes from the id: it is what ARM will delete. A bare subscription / resource-group id is refused
+      // (resource groups go through delete_resource_group and its typed prompt).
+      const scope = resolveResourceScope(a, { requireResource: true });
       const { dryRun } = ctx.policy.guard({
         tool: "delete_resource",
         capability: "admin",
-        resourceGroup: a.resourceGroup as string | undefined,
+        subscription: scope.subscription,
+        resourceGroup: scope.resourceGroup,
+        resourceGroupRequired: true,
         destructive: true,
         confirmExpected: name,
         confirmProvided: a.confirm as string | undefined,
       });
-      if (dryRun) return textResult(`[dry-run] Would delete resource '${name}' (${a.resourceId}).`);
-      const resourceId = a.resourceId as string;
+      if (dryRun) return textResult(`[dry-run] Would delete resource '${name}' (${scope.id}).`);
+      const resourceId = scope.id;
       const apiVersion = a.apiVersion as string;
       const ok = await ctx.confirm.confirm({
         action: "delete resource",
@@ -86,7 +93,7 @@ export const adminTools: ToolDef[] = [
         probe: () => ctx.client.resourceVersion(resourceId, apiVersion),
       });
       if (!ok.approved) return textResult(`Deletion cancelled — ${ok.reason}.`);
-      await ctx.client.deleteResource(a.resourceId as string, a.apiVersion as string);
+      await ctx.client.deleteResource(resourceId, apiVersion);
       return jsonResult({ deleted: true, resource: name });
     },
   },

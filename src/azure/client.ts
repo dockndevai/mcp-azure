@@ -5,8 +5,34 @@
  */
 import { createHash } from "node:crypto";
 import type { AzureConnection } from "../config.js";
+import { assertArmPath, assertSegment, parseResourceId } from "./resource-id.js";
 
 const ARM = "https://management.azure.com";
+const ARM_HOST = new URL(ARM).host;
+
+/**
+ * The ONLY place a request URL is built. The bearer token is attached to whatever this returns, so it
+ * must be ARM and nothing else: a relative ARM path made of plain segments, or an absolute https URL on
+ * exactly the management host (paging `nextLink`s). Throws before any token is acquired.
+ */
+function armUrl(path: string): URL {
+  let url: URL;
+  if (path.startsWith("/")) {
+    assertArmPath(path);
+    url = new URL(`${ARM}${path}`);
+  } else {
+    // Absolute URL (a nextLink). Anything else, including `attacker.example/x` and `@host/x`, is refused.
+    try {
+      url = new URL(path);
+    } catch {
+      throw new AzureError("Refusing to send a request outside Azure Resource Manager (invalid URL).", 0);
+    }
+  }
+  if (url.protocol !== "https:" || url.host !== ARM_HOST || url.username || url.password) {
+    throw new AzureError(`Refusing to send a request outside ${ARM}.`, 0);
+  }
+  return url;
+}
 
 export class AzureError extends Error {
   constructor(message: string, readonly status: number, readonly body?: string) {
@@ -84,8 +110,8 @@ export class AzureClient {
     path: string,
     opts: { apiVersion: string; query?: Record<string, string | undefined>; body?: unknown } = { apiVersion: "2021-04-01" },
   ): Promise<T> {
+    const url = armUrl(path); // validated BEFORE a token is acquired: the token never leaves ARM
     const token = await this.getToken();
-    const url = new URL(path.startsWith("http") ? path : `${ARM}${path}`);
     url.searchParams.set("api-version", opts.apiVersion);
     for (const [k, v] of Object.entries(opts.query ?? {})) if (v !== undefined) url.searchParams.set(k, v);
 
@@ -146,6 +172,8 @@ export class AzureClient {
    * the same id within the same createdTime second.
    */
   async resourceGroupVersion(sub: string, name: string): Promise<string | undefined> {
+    assertSegment(sub, "subscription id");
+    assertSegment(name, "resource group name");
     const rg = await this.getOrUndefined<{ id?: string; location?: string; tags?: Record<string, string> }>(
       `/subscriptions/${sub}/resourcegroups/${name}`,
       "2021-04-01",
@@ -165,6 +193,7 @@ export class AzureClient {
    * fields the GET does not return, or a same-id recreate with identical properties.
    */
   async resourceVersion(resourceId: string, apiVersion: string): Promise<string | undefined> {
+    parseResourceId(resourceId);
     const r = await this.getOrUndefined<Record<string, unknown>>(resourceId, apiVersion);
     if (!r) return undefined;
     if (typeof r.etag === "string" && r.etag) return digest({ id: r.id ?? resourceId, etag: r.etag });
@@ -177,6 +206,9 @@ export class AzureClient {
    * a different VM. NOT detected: changes to data disks or NICs.
    */
   async vmVersion(sub: string, rg: string, vm: string): Promise<string | undefined> {
+    assertSegment(sub, "subscription id");
+    assertSegment(rg, "resource group name");
+    assertSegment(vm, "virtual machine name");
     type Vm = {
       id?: string;
       properties?: {
@@ -200,41 +232,53 @@ export class AzureClient {
   }
 
   // --- Reads -----------------------------------------------------------------
-  listSubscriptions() {
+  async listSubscriptions() {
     return this.request("GET", "/subscriptions", { apiVersion: "2022-12-01" });
   }
-  listLocations(sub: string) {
+  async listLocations(sub: string) {
+    assertSegment(sub, "subscription id");
     return this.request("GET", `/subscriptions/${sub}/locations`, { apiVersion: "2022-12-01" });
   }
-  listResourceGroups(sub: string) {
+  async listResourceGroups(sub: string) {
+    assertSegment(sub, "subscription id");
     return this.request("GET", `/subscriptions/${sub}/resourcegroups`, { apiVersion: "2021-04-01" });
   }
-  listResources(sub: string, rg?: string) {
+  async listResources(sub: string, rg?: string) {
+    assertSegment(sub, "subscription id");
+    if (rg !== undefined) assertSegment(rg, "resource group name");
     const path = rg
       ? `/subscriptions/${sub}/resourceGroups/${rg}/resources`
       : `/subscriptions/${sub}/resources`;
     return this.request("GET", path, { apiVersion: "2021-04-01" });
   }
-  getResource(resourceId: string, apiVersion: string) {
+  async getResource(resourceId: string, apiVersion: string) {
+    parseResourceId(resourceId);
     return this.request("GET", resourceId, { apiVersion });
   }
 
   // --- Writes ----------------------------------------------------------------
-  createResourceGroup(sub: string, name: string, location: string, tags?: Record<string, string>) {
+  async createResourceGroup(sub: string, name: string, location: string, tags?: Record<string, string>) {
+    assertSegment(sub, "subscription id");
+    assertSegment(name, "resource group name");
     return this.request("PUT", `/subscriptions/${sub}/resourcegroups/${name}`, {
       apiVersion: "2021-04-01",
       body: { location, tags },
     });
   }
   /** Merge tags onto any resource via the generic Tags API (no per-type api-version needed). */
-  tagResource(resourceId: string, tags: Record<string, string>) {
+  async tagResource(resourceId: string, tags: Record<string, string>) {
+    parseResourceId(resourceId);
     return this.request("PATCH", `${resourceId}/providers/Microsoft.Resources/tags/default`, {
       apiVersion: "2021-04-01",
       body: { operation: "Merge", properties: { tags } },
     });
   }
   /** Power action on a VM: start | powerOff | restart | deallocate. */
-  controlVm(sub: string, rg: string, vm: string, action: string) {
+  async controlVm(sub: string, rg: string, vm: string, action: string) {
+    assertSegment(sub, "subscription id");
+    assertSegment(rg, "resource group name");
+    assertSegment(vm, "virtual machine name");
+    assertSegment(action, "VM action");
     return this.request(
       "POST",
       `/subscriptions/${sub}/resourceGroups/${rg}/providers/Microsoft.Compute/virtualMachines/${vm}/${action}`,
@@ -243,10 +287,13 @@ export class AzureClient {
   }
 
   // --- Destructive -----------------------------------------------------------
-  deleteResourceGroup(sub: string, name: string) {
+  async deleteResourceGroup(sub: string, name: string) {
+    assertSegment(sub, "subscription id");
+    assertSegment(name, "resource group name");
     return this.request("DELETE", `/subscriptions/${sub}/resourcegroups/${name}`, { apiVersion: "2021-04-01" });
   }
-  deleteResource(resourceId: string, apiVersion: string) {
+  async deleteResource(resourceId: string, apiVersion: string) {
+    parseResourceId(resourceId, { requireResource: true });
     return this.request("DELETE", resourceId, { apiVersion });
   }
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ToolDef } from "./types.js";
-import { jsonResult, resolveSub } from "./types.js";
+import { assertSegment } from "../azure/resource-id.js";
+import { jsonResult, resolveResourceScope, resolveSub } from "./types.js";
 
 const subArg = { subscription: z.string().optional().describe("Subscription id (defaults to AZURE_SUBSCRIPTION_ID)") };
 
@@ -52,7 +53,7 @@ export const readTools: ToolDef[] = [
     },
     handler: async (a, ctx) => {
       const sub = resolveSub(a, ctx);
-      const rg = a.resourceGroup as string | undefined;
+      const rg = a.resourceGroup === undefined ? undefined : assertSegment(a.resourceGroup, "resource group name");
       ctx.policy.guard({ tool: "list_resources", capability: "read", subscription: sub, resourceGroup: rg });
       const data = (await ctx.client.listResources(sub, rg)) as { value?: Array<Record<string, unknown>> };
       const items = (data.value ?? []).map((r) => ({ id: r.id, name: r.name, type: r.type, location: r.location, kind: r.kind }));
@@ -71,8 +72,16 @@ export const readTools: ToolDef[] = [
       },
     },
     handler: async (a, ctx) => {
-      ctx.policy.guard({ tool: "get_resource", capability: "read" });
-      return jsonResult(await ctx.client.getResource(a.resourceId as string, a.apiVersion as string));
+      // Scope comes from the id: it is what ARM will read.
+      const scope = resolveResourceScope(a);
+      ctx.policy.guard({
+        tool: "get_resource",
+        capability: "read",
+        subscription: scope.subscription,
+        resourceGroup: scope.resourceGroup,
+        resourceGroupRequired: true,
+      });
+      return jsonResult(await ctx.client.getResource(scope.id, a.apiVersion as string));
     },
   },
 ];

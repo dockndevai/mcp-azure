@@ -2,7 +2,8 @@ import type { ZodRawShape } from "zod";
 import type { Confirmer } from "../elicit.js";
 import type { GuardClient } from "../guard.js";
 import type { AzureClient } from "../azure/client.js";
-import type { Capability, SecurityPolicy } from "../security.js";
+import { assertSegment, parseResourceId, type ResourceScope } from "../azure/resource-id.js";
+import { PolicyError, type Capability, type SecurityPolicy } from "../security.js";
 
 export interface ToolContext {
   client: AzureClient;
@@ -42,5 +43,30 @@ export function textResult(text: string): ToolResult {
 export function resolveSub(args: Record<string, unknown>, ctx: ToolContext): string {
   const sub = (args.subscription as string | undefined) ?? ctx.defaultSubscription;
   if (!sub) throw new Error("No subscription provided and AZURE_SUBSCRIPTION_ID is not set.");
-  return sub;
+  return assertSegment(sub, "subscription id");
+}
+
+/**
+ * Scope for a tool that targets one resource by ARM id. The subscription and resource group come from the ID
+ * (that is what ARM will act on); an optional `subscription` / `resourceGroup` argument is only an assertion and
+ * must agree with it. Policy must be evaluated on the returned values, never on the arguments.
+ */
+export function resolveResourceScope(
+  args: Record<string, unknown>,
+  opts: { requireResource?: boolean } = {},
+): ResourceScope {
+  const scope = parseResourceId(args.resourceId, opts);
+  const claimed: Array<[string, unknown, string | undefined]> = [
+    ["subscription", args.subscription, scope.subscription],
+    ["resourceGroup", args.resourceGroup, scope.resourceGroup],
+  ];
+  for (const [name, supplied, actual] of claimed) {
+    if (supplied === undefined || supplied === null || supplied === "") continue;
+    if (typeof supplied !== "string" || actual === undefined || supplied.toLowerCase() !== actual.toLowerCase()) {
+      throw new PolicyError(
+        `The supplied ${name} '${String(supplied)}' does not match the resource id (${actual ?? "none"}); policy is evaluated on the id.`,
+      );
+    }
+  }
+  return scope;
 }
